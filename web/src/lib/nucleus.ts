@@ -45,7 +45,7 @@ export function nucleusCaption(
 ): string | null {
   if (mode === "hidden" || !system) return null;
   if (system.nuclear_radius === null || system.nuclear_radius_fm === null) {
-    return "the “nucleus” here is a point lepton, so there is no measured size to draw";
+    return "the \"nucleus\" here is a point lepton, so there is no measured size to draw";
   }
   const fm = system.nuclear_radius_fm.value.toFixed(3);
   const bohr = system.nuclear_radius.value.toExponential(1).replace("e-", "e-");

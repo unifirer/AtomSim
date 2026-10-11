@@ -16,8 +16,8 @@ and watch what the altered physics actually does.
 ## The prime directive
 
 Every physical value that crosses a module boundary carries a `Provenance`
-saying how it was obtained. Not a comment, not documentation: a data structure
-the engine threads through the server and out to the browser, where the UI
+saying how it was obtained. That provenance is a real data structure. The
+engine threads it through the server and out to the browser, where the UI
 renders it as a badge you can click.
 
 | Tier | Meaning |
