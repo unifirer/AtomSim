@@ -1,0 +1,55 @@
+/* The terms and privacy pages. Plain reading pages: same ink, paper and
+   typeface as the instrument, none of its chrome. */
+@import "./assets/fonts/poppins/poppins.css";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: #050708;
+  color: #e9f2ef;
+  font-family: "Poppins", system-ui, sans-serif;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 4rem;
+}
+
+h1 {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.25rem;
+}
+
+h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 2rem 0 0.5rem;
+}
+
+p,
+li {
+  color: #c4d2cd;
+  font-size: 0.95rem;
+}
+
+a {
+  color: #34e0a1;
+}
+
+.back {
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.updated {
+  color: #869b94;
+  font-size: 0.85rem;
+  margin: 0;
+}

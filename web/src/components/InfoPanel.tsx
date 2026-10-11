@@ -180,6 +180,10 @@ export function InfoPanel() {
           </div>
         </figure>
       )}
+      <nav className="legal-links" aria-label="site policies">
+        <a href="/terms.html">Terms</a>
+        <a href="/privacy.html">Privacy</a>
+      </nav>
     </aside>
   );
 }

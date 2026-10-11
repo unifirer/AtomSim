@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy · AtomSim</title>
+    <meta name="theme-color" content="#050708" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/src/legal.css" />
+  </head>
+  <body>
+    <main>
+      <a class="back" href="/">Back to AtomSim</a>
+      <h1>Privacy</h1>
+      <p class="updated">Last updated 11 October 2026</p>
+
+      <p>
+        AtomSim has no accounts, no sign-up and no cookies. You can use all of it
+        without telling it who you are. Here is everything that does get recorded
+        when you visit.
+      </p>
+
+      <h2>Visit counting</h2>
+      <p>
+        Each time the page opens, it sends one request to
+        <a href="https://www.goatcounter.com/">GoatCounter</a> so I can see roughly
+        how many people use the site. That request contains:
+      </p>
+      <ul>
+        <li>the page path (always <code>/</code>)</li>
+        <li>the page title</li>
+        <li>the site that linked you here, if your browser shares it</li>
+        <li>your screen width, to tell phones from desktops</li>
+        <li>whether the browser looks automated, so test scripts are not counted as people</li>
+      </ul>
+      <p>
+        It does not include which atom, orbital or view you were looking at. GoatCounter
+        sets no cookie and does not store your IP address. It turns your address and
+        browser into a hash that changes every day, which is how it can count unique
+        visitors without being able to follow you around. Their own policy is at
+        <a href="https://www.goatcounter.com/help/privacy">goatcounter.com/help/privacy</a>.
+      </p>
+
+      <h2>Server logs</h2>
+      <p>
+        The site runs on <a href="https://fly.io/">Fly.io</a>. Like most web servers,
+        it writes a line for each request: the time, the address it came from, the
+        path and the response code. These logs exist to keep the site running and to
+        debug problems. I don't use them to identify anyone, and they are not shared
+        or sold. Fly.io keeps them for a limited time under its own
+        <a href="https://fly.io/legal/privacy-policy">privacy policy</a>.
+      </p>
+
+      <h2>Rate limiting</h2>
+      <p>
+        Running a simulation takes real CPU time, so the server limits how many
+        simulations one address can start in a short window. It does this with a
+        small table kept in memory, keyed by IP address. The table is never written
+        to disk, and it is cleared whenever the server restarts.
+      </p>
+
+      <h2>What stays in your browser</h2>
+      <p>
+        The state you are viewing (the atom, the quantum numbers, the view) is kept
+        in the page address so you can bookmark or share it. That address goes
+        wherever you choose to paste it, and nowhere else.
+      </p>
+
+      <h2>Questions</h2>
+      <p>
+        Open an issue on
+        <a href="https://github.com/yaasshh09/AtomSim/issues">GitHub</a>. If this
+        policy changes, the date at the top changes with it.
+      </p>
+    </main>
+  </body>
+</html>

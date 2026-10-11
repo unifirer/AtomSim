@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -7,6 +8,15 @@ export default defineConfig({
     // three.js is one indivisible ~1 MB vendor chunk; the warning is meant to
     // catch bloated APP code, and the app chunk is ~60 kB after the split
     chunkSizeWarningLimit: 1100,
+    // The terms and privacy pages are their own HTML entries so their CSS, and
+    // the Poppins faces it pulls in, go through the same hashing as the app.
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        terms: resolve(__dirname, "terms.html"),
+        privacy: resolve(__dirname, "privacy.html"),
+      },
+    },
     // No manualChunks. There used to be one naming three/fiber/drei and katex
     // as vendor chunks, and it actively prevented the split it looked like it
     // was making: forcing @react-three/fiber into a chunk dragged React in

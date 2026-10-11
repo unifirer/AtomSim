@@ -410,7 +410,7 @@ export function ForceLawView() {
                         and its label was left hanging half-cut on the frame. */}
                     {x2 >= PAD.left && x2 <= W - PAD.right - 60 && (
                       <text x={x2 + 4} y={y(c.energy_ev.value) - 4} className="forcelaw-label">
-                        {c.energy_ev.value.toFixed(2)} eV{c.trusted ? "" : " ⚠"}
+                        {c.energy_ev.value.toFixed(2)} eV{c.trusted ? "" : " (?)"}
                       </text>
                     )}
                   </g>
@@ -484,7 +484,7 @@ export function ForceLawView() {
                     textAnchor="end"
                     className="forcelaw-label"
                   >
-                    {c.energy_ev.value.toFixed(2)} eV{c.trusted ? "" : " ⚠"}
+                    {c.energy_ev.value.toFixed(2)} eV{c.trusted ? "" : " (?)"}
                   </text>
                 </g>
               ))}
