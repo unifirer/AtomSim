@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/yaasshh09/AtomSim/actions/workflows/ci.yml/badge.svg)](https://github.com/yaasshh09/AtomSim/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)](LICENSE)
 
 A hand-written atomic-physics engine and the instrument that reads it. Solve
 hydrogen in closed form, run self-consistent Hartree-Fock on real atoms,
@@ -122,4 +122,6 @@ what got built and why, and a plan saying how.
 
 ## License
 
-MIT
+[CC BY-NC 4.0](LICENSE). You can use, share and adapt AtomSim with credit, but
+not for commercial purposes. The bundled Poppins font is under the SIL Open Font
+License.
