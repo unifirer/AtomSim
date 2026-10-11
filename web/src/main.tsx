@@ -10,8 +10,7 @@ import { useAppStore } from "./state/store";
 // Bundled rather than fetched from a CDN: `atomsim serve` runs locally, and
 // the typography is part of the instrument, so it has to survive being
 // offline.
-import "@fontsource-variable/space-grotesk";
-import "@fontsource-variable/jetbrains-mono";
+import "./assets/fonts/poppins/poppins.css";
 import "./index.css";
 
 // First, so an arrival is counted even if the render that follows throws:

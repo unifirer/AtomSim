@@ -24,8 +24,8 @@
      card that docks above it. */
   --peek-h: 56px;
   --sheet-h: 56px;
-  --sans: "Space Grotesk Variable", system-ui, sans-serif;
-  --mono: "JetBrains Mono Variable", ui-monospace, "Cascadia Mono", monospace;
+  --sans: "Poppins", system-ui, sans-serif;
+  --mono: "Poppins", system-ui, sans-serif;
   /* The one surface the page does not paint itself. An open <select> popup is
      drawn by the platform, and on a dark page it still came up white with dark
      text: the closed control is ours, the list is the OS's. Declaring the
