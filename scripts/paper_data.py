@@ -9,7 +9,9 @@ and this file reads the live engine. Regenerate after any physics change:
 
 import json
 import platform
+import re
 import subprocess
+import sys
 import time
 import warnings
 from datetime import date
@@ -29,6 +31,7 @@ from atomsim.hf_atom import (
 )
 from atomsim.hf_reference import load_hf_reference
 from atomsim.numerics.radial_solver import solve_radial, solve_radial_with_error
+from atomsim.provenance import Fidelity
 from atomsim.screened_atom import solve_screened_atom
 from atomsim.spectra import (
     compare_lines,
@@ -233,6 +236,34 @@ def _density_argon() -> dict:
     }
 
 
+def _census() -> dict:
+    """How often each tier is named in the engine source, and the test count.
+
+    A name count, not an assignment count: `is Fidelity.EXACT` in a check counts
+    as well as `fidelity=Fidelity.EXACT` in a constructor. The paper says so.
+    """
+    counts = {f.value: 0 for f in Fidelity}
+    for path in (ROOT / "src" / "atomsim").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for f in Fidelity:
+            counts[f.value] += text.count(f"Fidelity.{f.name}")
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        cwd=ROOT, capture_output=True, text=True,
+    ).stdout
+    tests = int(re.search(r"(\d+) tests? collected", collected).group(1))
+    # The engine never assigns VISUAL_LIBERTY: presentation happens in the
+    # browser, so that is where the declarations live.
+    liberties = sum(
+        path.read_text(encoding="utf-8").count('fidelity: "visual_liberty"')
+        for pattern in ("*.ts", "*.tsx")
+        for path in (ROOT / "web" / "src").rglob(pattern)
+        if ".test." not in path.name
+    )
+    return {"tier_mentions": counts, "python_tests": tests,
+            "frontend_visual_liberty_declarations": liberties}
+
+
 def _density_pauli_argon() -> dict:
     """Figure 7: argon's whole-atom D(r) with exclusion, and collapsed to 1s^18."""
     out = {}
@@ -250,6 +281,7 @@ def main() -> None:
     hf_rows, hf_points = _hf_totals()
     data = {
         "meta": _meta(),
+        "census": _census(),
         "hf_totals": hf_rows,
         "error_bars": _radial_points() + hf_points,
         "convergence": _convergence(),

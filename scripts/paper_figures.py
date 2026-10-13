@@ -1,7 +1,9 @@
-"""Writes paper/figures/*.pdf from paper/data/paper_data.json, and nothing else.
+"""Writes paper/figures/*.pdf and paper/generated/*.tex from paper_data.json.
 
-Figures never call the engine. They read the same file the tables do, so a
-figure and a table can never disagree about a number. Run paper_data.py first.
+Figures and tables never call the engine. They read one file, so a figure, a
+table and a number quoted in the prose can never disagree. Every number in the
+manuscript is a macro from paper/generated/numbers.tex; none is typed by hand.
+Run paper_data.py first.
 """
 
 import json
@@ -163,11 +165,122 @@ def architecture() -> None:
         ax.add_patch(FancyArrowPatch((x, 1.05), (x + 0.3, 1.05), arrowstyle="-|>",
                                      mutation_scale=8, color="0.2"))
     ax.text(5.0, 2.1, "the fidelity tier is a required field at every boundary; "
-            "a bare float cannot cross", ha="center", fontsize=7, style="italic")
+            "no computed result crosses without one", ha="center", fontsize=7,
+            style="italic")
     _save(fig, "fig1_architecture")
 
 
+def sci(x: float, sig: int = 2) -> str:
+    """x in math-mode scientific notation at `sig` figures: 1.2\\times10^{-5}."""
+    if x == 0:
+        return "0"
+    mantissa, exponent = f"{x:.{sig - 1}e}".split("e")
+    exponent = int(exponent)
+    return mantissa if exponent == 0 else rf"{mantissa}\times10^{{{exponent}}}"
+
+
+def tables() -> None:
+    """numbers.tex (one macro per quoted number) and the two data tables."""
+    out = ROOT / "paper" / "generated"
+    out.mkdir(parents=True, exist_ok=True)
+    m: dict[str, str] = {}
+    meta, census = DATA["meta"], DATA["census"]
+    m["Commit"], m["Generated"] = meta["commit"], meta["generated"]
+    m["PythonTests"] = str(census["python_tests"])
+    m["LibertyCount"] = str(census["frontend_visual_liberty_declarations"])
+    for tier, n in census["tier_mentions"].items():
+        m["Mentions" + tier.title().replace("_", "")] = str(n)
+
+    bars = DATA["error_bars"]
+    m["NErrorBars"] = str(len(bars))
+    m["NErrorBarsBracketed"] = str(sum(p["quoted"] > p["actual"] for p in bars))
+
+    def ratios(prefix: str) -> list[float]:
+        return [p["quoted"] / p["actual"] for p in bars if p["family"].startswith(prefix)]
+
+    for name, prefix in (("Radial", "radial"), ("HFTotal", "Hartree-Fock total energy vs Bunge"),
+                         ("HFOrbital", "Hartree-Fock orbital")):
+        r = ratios(prefix)
+        m[name + "RatioMin"], m[name + "RatioMax"] = f"{min(r):.2f}", f"{max(r):.2f}"
+        m[name + "Count"] = str(len(r))
+    m["HydrogenHFRatio"] = f"{ratios('Hartree-Fock total energy vs exact')[0]:.2f}"
+
+    orders = [r["observed_order"] for r in DATA["convergence"] if r["observed_order"]]
+    m["ConvOrderMin"], m["ConvOrderMax"] = f"{min(orders):.3f}", f"{max(orders):.3f}"
+
+    nist_rows = DATA["nist_lines"]
+    m["NNistLines"] = str(len(nist_rows))
+    hydrogenic = [r["relative_error"] for r in nist_rows if r["system"] in ("h", "d")]
+    m["HydrogenicRelMax"] = sci(max(hydrogenic))
+    m["HydrogenicRelMin"] = sci(min(hydrogenic))
+    for key in ("he", "li", "na"):
+        rel = sorted(r["relative_error"] for r in nist_rows if r["system"] == key)
+        name = key.title()
+        m[name + "RelMax"] = f"{100 * rel[-1]:.1f}"
+        m[name + "RelMin"] = f"{100 * rel[0]:.1f}"
+        m[name + "RelMedian"] = f"{100 * float(np.median(rel)):.1f}"
+        m[name + "Within"] = str(sum(x <= 0.05 for x in rel))
+        m[name + "Lines"] = str(len(rel))
+    worst = max((r for r in nist_rows if r["system"] == "he"), key=lambda r: r["relative_error"])
+    m["HeWorstRef"] = f"{worst['reference_nm']:.1f}"
+    m["HeWorstComputed"] = f"{worst['computed_nm']:.0f}"
+
+    for row in DATA["hf_totals"]:
+        s = row["symbol"]
+        m[s + "Deviation"] = sci(row["deviation_hartree"])
+        m[s + "Bar"] = sci(row["error_bar_hartree"])
+        m[s + "Seconds"] = f"{row['solve_seconds']:.1f}"
+
+    cf = DATA["counterfactuals"]
+    m["ExchHe"] = f"{cf['exchange']['He']['exchange_energy_hartree']:.1f}"
+    m["ExchBe"] = f"{cf['exchange']['Be']['exchange_energy_hartree']:.4f}"
+    m["ExchNe"] = f"{cf['exchange']['Ne']['exchange_energy_hartree']:.3f}"
+    ar = cf["pauli_argon"]
+    m["ArRealE"] = f"{ar['real_energy_hartree']:.2f}"
+    m["ArCollapsedE"] = f"{ar['collapsed_energy_hartree']:.2f}"
+    m["ArVariationalE"] = f"{ar['variational_energy_hartree']:.2f}"
+    m["ArRealRadius"] = f"{ar['real_radius_bohr']:.3f}"
+    m["ArCollapsedRadius"] = f"{ar['collapsed_radius_bohr']:.3f}"
+    m["ArRadiusRatio"] = f"{ar['radius_ratio']:.3f}"
+    m["ArDisplaced"] = f"{DATA['density_ar']['displaced_charge_electrons']:.3f}"
+    diff = np.array(DATA["density_ar"]["hf"]) - np.array(DATA["density_ar"]["gsz"])
+    m["ArMaxDiff"] = f"{np.abs(diff).max():.2f}"
+    m["ArDensityElectrons"] = f"{DATA['density_pauli_ar']['real']['electrons']:.3f}"
+
+    (out / "numbers.tex").write_text(
+        "% Generated by scripts/paper_figures.py from paper/data/paper_data.json. Do not edit.\n"
+        + "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in m.items()),
+        encoding="utf-8",
+    )
+
+    hf = [r"\begin{tabular}{lrcccc}", r"\hline\hline",
+          r"Atom & $Z$ & $E_\mathrm{HF}$ (hartree) & Quoted bar & $|E_\mathrm{HF}-E_\mathrm{ref}|$"
+          r" & Ratio \\", r"\hline"]
+    for row in DATA["hf_totals"]:
+        hf.append(rf"{row['symbol']} & {row['z']} & ${row['energy_hartree']:.6f}$ & "
+                  rf"${sci(row['error_bar_hartree'])}$ & ${sci(row['deviation_hartree'])}$ & "
+                  rf"{row['bar_over_deviation']:.2f} \\")
+    hf += [r"\hline\hline", r"\end{tabular}"]
+    (out / "table_hf.tex").write_text("\n".join(hf) + "\n", encoding="utf-8")
+
+    names = {"h": "H", "d": "D", "he": "He", "li": "Li", "na": "Na"}
+    nist_tab = [r"\begin{tabular}{llcccc}", r"\hline\hline",
+                r"System & Model (tier) & Lines & Median & Worst & Reference medium \\",
+                r"\hline"]
+    for key in ("h", "d", "he", "li", "na"):
+        rows = [r for r in nist_rows if r["system"] == key]
+        rel = [r["relative_error"] for r in rows]
+        nist_tab.append(
+            rf"{names[key]} & {rows[0]['model']} ({rows[0]['fidelity']}) & {len(rows)} & "
+            rf"${sci(float(np.median(rel)))}$ & ${sci(max(rel))}$ & "
+            rf"{rows[0]['reference_medium']} \\")
+    nist_tab += [r"\hline\hline", r"\end{tabular}"]
+    (out / "table_nist.tex").write_text("\n".join(nist_tab) + "\n", encoding="utf-8")
+    print(f"wrote {len(m)} macros and 2 tables")
+
+
 def main() -> None:
+    tables()
     architecture()
     convergence()
     nist()
