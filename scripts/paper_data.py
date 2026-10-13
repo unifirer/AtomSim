@@ -7,6 +7,7 @@ and this file reads the live engine. Regenerate after any physics change:
     python scripts/paper_data.py
 """
 
+import importlib.util
 import json
 import platform
 import re
@@ -19,11 +20,16 @@ from pathlib import Path
 
 import numpy as np
 import scipy
+import scipy.constants
 
-from atomsim.analytic.hydrogen import energy
+from atomsim.analytic.hydrogen import energy, radial_wavefunction
+from atomsim.analytic.zeeman import zeeman_sublevels
 from atomsim.atoms import aufbau_configuration
+from atomsim.broadening import doppler_sigma_nm, natural_gamma_nm
+from atomsim.constants import HARTREE_EV
 from atomsim.density_compare import compare_total_densities
 from atomsim.hf_atom import (
+    _relativistic_scale,
     hf_exchange_energy,
     hf_total_radial_density,
     pauli_collapse,
@@ -39,7 +45,8 @@ from atomsim.spectra import (
     screened_transition_lines,
     transition_lines,
 )
-from atomsim.systems import get_system
+from atomsim.systems import emitter_mass, get_system, list_systems
+from atomsim.transfer import curve_of_growth, default_columns
 
 # The SCF loop's inner eigensolver reports when one step stops short of its own
 # tolerance. The outer loop has the real gate and raises HFConvergenceError
@@ -86,6 +93,9 @@ def _hf_totals() -> tuple[list[dict], list[dict]]:
             "bar_over_deviation": bar / deviation, "virial_ratio": result.virial_ratio.value,
             "fidelity": result.total_energy.provenance.fidelity.value,
             "solve_seconds": seconds,
+            "residual_history": list(result.residual_history),
+            "iterations": result.iterations,
+            "coarse_iterations": result.coarse_iterations,
         })
         points.append({
             "family": "Hartree-Fock total energy vs Bunge 1993", "label": f"{symbol} total",
@@ -236,6 +246,119 @@ def _density_argon() -> dict:
     }
 
 
+HARTREE_GHZ = scipy.constants.physical_constants["hartree-hertz relationship"][0] / 1e9
+
+
+def _systems() -> list[dict]:
+    """Every hydrogen-like preset: its reduced mass and its Lyman-alpha line."""
+    rows = []
+    for s in list_systems():
+        lya = next(ln for ln in transition_lines(s, n_max=2).lines if ln.l_upper == 1)
+        rows.append({
+            "key": s.key, "name": s.name, "z": s.Z,
+            "mu_ratio": s.mu_ratio.value, "mu_error": s.mu_ratio.provenance.error_estimate,
+            "ground_ev": energy(1, Z=s.Z, mu_ratio=s.mu_ratio.value).value * HARTREE_EV,
+            "lyman_alpha_nm": lya.wavelength.value,
+            "fidelity": lya.wavelength.provenance.fidelity.value,
+        })
+    return rows
+
+
+def _radial_compare() -> list[dict]:
+    """Closed-form u = rR against the numerical solver on the same grid."""
+    out = []
+    for n, l in ((1, 0), (2, 0), (2, 1), (3, 2)):
+        sol = solve_radial(lambda r: -1.0 / r, l=l, r_max=60.0, n_points=6000,
+                           n_states=n - l)
+        u_num = sol.u[n - l - 1]
+        u_exact = sol.r * radial_wavefunction(n, l, sol.r).values
+        step = 20  # every 20th point is plenty to draw; the max is taken on all
+        out.append({
+            "n": n, "l": l, "r": sol.r[::step].tolist(),
+            "u_exact": u_exact[::step].tolist(), "u_num": u_num[::step].tolist(),
+            "max_abs_diff": float(np.abs(u_num - u_exact).max()),
+        })
+    return out
+
+
+def _error_budget() -> list[dict]:
+    """The neglected relativity, as a fraction of the 1s energy, for Z = 1..36."""
+    return [{"z": z, "relativity_fraction": _relativistic_scale(z)} for z in range(1, 37)]
+
+
+def _pauli_series() -> list[dict]:
+    """Exclusion off for every Z from 2 to 18, each checked against its bound."""
+    rows = []
+    for z in range(2, 19):
+        p = pauli_collapse(z)
+        rows.append({
+            "z": z, "real_energy": p.real.total_energy.value,
+            "collapsed_energy": p.collapsed.total_energy.value,
+            "variational_energy": p.variational_energy.value,
+            "variational_zeta": p.variational_zeta.value,
+            "radius_ratio": p.radius_ratio.value,
+            "real_radius": p.real_radius.value, "collapsed_radius": p.collapsed_radius.value,
+        })
+    return rows
+
+
+def _exchange_series() -> list[dict]:
+    rows = []
+    for symbol, z in CLOSED_SHELL:
+        q = hf_exchange_energy(z, z, aufbau_configuration(z))
+        rows.append({"symbol": symbol, "z": z, "exchange_hartree": q.value,
+                     "fidelity": q.provenance.fidelity.value})
+    return rows
+
+
+def _zeeman_h2() -> dict:
+    """Hydrogen n=2 sublevels across the Breit-Rabi crossover, in GHz from the
+    zero-field 2p(j=3/2) level."""
+    fields = np.linspace(0.0, 2.0, 81)
+    reference = None
+    curves: dict[str, list[float]] = {}
+    for b in fields:
+        for l in (0, 1):
+            for s in zeeman_sublevels(2, l, b_tesla=float(b)):
+                key = f"l={l} j={s.j_label} m_j={s.m_j}"
+                curves.setdefault(key, []).append(s.energy.value)
+    reference = max(v[0] for v in curves.values())
+    return {
+        "b_tesla": fields.tolist(),
+        "levels_ghz": {k: ((np.array(v) - reference) * HARTREE_GHZ).tolist()
+                       for k, v in curves.items()},
+        "fidelity": "approximation",
+    }
+
+
+def _curve_of_growth_lya() -> dict:
+    """Lyman-alpha at 10^4 K: equivalent width against column, with regimes."""
+    system = get_system("h")
+    line = next(ln for ln in transition_lines(system, n_max=2, intensities=True).lines
+                if ln.l_upper == 1)
+    lam = line.wavelength.value
+    f = line.oscillator_strength.value
+    sigma = doppler_sigma_nm(lam, 1.0e4, emitter_mass(system).value)
+    gamma = natural_gamma_nm(line.einstein_a.value, lam)
+    cog = curve_of_growth(f, lam, sigma, gamma, default_columns(f, lam, sigma, gamma))
+    return {
+        "column_m2": cog.column_density.tolist(),
+        "equivalent_width_nm": cog.equivalent_width.tolist(),
+        "regime": list(cog.regime), "slope": cog.slope.tolist(),
+        "wavelength_nm": lam, "f": f, "einstein_a": line.einstein_a.value,
+        "sigma_nm": sigma, "gamma_nm": gamma, "temperature_k": 1.0e4,
+    }
+
+
+def _allowlist() -> list[dict]:
+    """The boundary test's allowlist, read from the test itself."""
+    spec = importlib.util.spec_from_file_location("ts", ROOT / "tests" / "test_schemas.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return [{"model": m, "field": f, "reason": r}
+            for (m, f), r in module._NO_PROVENANCE_NEEDED.items()]
+
+
 def _census() -> dict:
     """How often each tier is named in the engine source, and the test count.
 
@@ -289,6 +412,14 @@ def main() -> None:
         "counterfactuals": _counterfactuals(),
         "density_ar": _density_argon(),
         "density_pauli_ar": _density_pauli_argon(),
+        "systems": _systems(),
+        "radial_compare": _radial_compare(),
+        "error_budget": _error_budget(),
+        "pauli_series": _pauli_series(),
+        "exchange_series": _exchange_series(),
+        "zeeman_h2": _zeeman_h2(),
+        "curve_of_growth_lya": _curve_of_growth_lya(),
+        "allowlist": _allowlist(),
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(data, indent=1), encoding="utf-8")

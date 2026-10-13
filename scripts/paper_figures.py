@@ -43,6 +43,7 @@ ONE_COL = (3.4, 2.6)
 def _save(fig, name: str) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{name}.pdf")
+    fig.savefig(OUT / f"{name}.svg")  # the KaTeX web version shows these
     plt.close(fig)
     print(f"wrote {name}.pdf")
 
@@ -170,6 +171,114 @@ def architecture() -> None:
     _save(fig, "fig1_architecture")
 
 
+def radial_compare() -> None:
+    """Closed-form u(r) against the finite-difference solver, with the gap."""
+    fig, (top, bottom) = plt.subplots(2, 1, figsize=(3.4, 3.4), sharex=True,
+                                      gridspec_kw={"height_ratios": [2, 1]})
+    for marker, row in zip("os^D", DATA["radial_compare"], strict=True):
+        r, ue, un = (np.array(row[k]) for k in ("r", "u_exact", "u_num"))
+        name = f"{row['n']}{'spdf'[row['l']]}"
+        line, = top.plot(r, ue, lw=1.0, label=name)
+        top.plot(r[::12], un[::12], ls="none", marker=marker, ms=2.5, mfc="none",
+                 color=line.get_color())
+        bottom.plot(r, un - ue, lw=0.9, color=line.get_color())
+    top.set(ylabel="$u(r) = rR(r)$")
+    top.legend(frameon=False, ncol=2, title="lines exact, symbols numerical",
+               title_fontsize=6)
+    bottom.set(xlim=(0, 25), xlabel="$r$ (bohr)", ylabel=r"$u_\mathrm{num} - u_\mathrm{exact}$")
+    bottom.ticklabel_format(axis="y", style="sci", scilimits=(-2, 2))
+    _save(fig, "fig_radial_compare")
+
+
+def error_budget() -> None:
+    """How big each kind of error is, relative to the total energy, against Z."""
+    fig, ax = plt.subplots(figsize=ONE_COL)
+    eb = DATA["error_budget"]
+    ax.semilogy([r["z"] for r in eb], [r["relativity_fraction"] for r in eb],
+                color=TIER["approximation"][0], lw=1.1,
+                label="neglected relativity (1s, Dirac vs Schrödinger)")
+    hf = DATA["hf_totals"]
+    z = [r["z"] for r in hf]
+    ax.semilogy(z, [r["error_bar_hartree"] / abs(r["energy_hartree"]) for r in hf],
+                ls="none", marker="s", ms=4, color=TIER["numerical"][0],
+                label="quoted numerical bar / |E|")
+    ax.semilogy(z, [r["deviation_hartree"] / abs(r["energy_hartree"]) for r in hf],
+                ls="none", marker="o", ms=4, mfc="none", color=TIER["numerical"][0],
+                label="actual deviation from Bunge / |E|")
+    ax.axvline(9, color="0.6", lw=0.6, ls=":")
+    ax.text(9.6, 2.2e-2, "relativity disclosed\nfrom $Z = 9$", fontsize=6, va="top")
+    ax.set(xlabel="$Z$", ylabel="relative size", xlim=(0, 37), ylim=(1e-6, 5e-2))
+    ax.legend(frameon=False, fontsize=6, loc="lower center", bbox_to_anchor=(0.5, 1.0))
+    _save(fig, "fig_error_budget")
+
+
+def scf_history() -> None:
+    """Self-consistency residual against iteration on the fine mesh."""
+    fig, ax = plt.subplots(figsize=ONE_COL)
+    for marker, row in zip("osD^v", DATA["hf_totals"], strict=True):
+        h = row["residual_history"]
+        ax.semilogy(range(1, len(h) + 1), h, marker=marker, ms=3.5, lw=0.9,
+                    label=f"{row['symbol']} ({row['coarse_iterations']} coarse + "
+                          f"{row['iterations']} fine)")
+    ax.set(xlabel="fine-mesh SCF iteration", ylabel="residual (hartree)")
+    ax.legend(frameon=False, fontsize=6)
+    _save(fig, "fig_scf_history")
+
+
+def counterfactual_series() -> None:
+    """Three counterfactual observables against Z."""
+    fig, axes = plt.subplots(3, 1, figsize=(3.4, 5.0), sharex=True)
+    color = TIER["counterfactual"][0]
+    ex = DATA["exchange_series"]
+    axes[0].plot([r["z"] for r in ex], [-r["exchange_hartree"] for r in ex], marker="D",
+                 ms=4, color=color, lw=0.9)
+    axes[0].set(ylabel=r"$-(E_\mathrm{HF}-E_\mathrm{H})$ (hartree)")
+    ps = DATA["pauli_series"]
+    z = [r["z"] for r in ps]
+    axes[1].plot(z, [r["radius_ratio"] for r in ps], marker="D", ms=3.5, color=color, lw=0.9)
+    axes[1].set(ylabel=r"$\langle r\rangle_\mathrm{off}/\langle r\rangle_\mathrm{on}$")
+    for zz in (3, 11):
+        axes[1].axvline(zz, color="0.6", lw=0.6, ls=":")
+    axes[2].plot(z, [r["collapsed_energy"] - r["variational_energy"] for r in ps],
+                 marker="D", ms=3.5, color=color, lw=0.9)
+    axes[2].axhline(0, color="0.5", lw=0.6)
+    axes[2].set(xlabel="$Z$", ylabel=r"$E_{1s^N} - E_\mathrm{bound}$ (hartree)")
+    for ax, tag in zip(axes, "abc", strict=True):
+        ax.text(0.93, 0.85, f"({tag})", transform=ax.transAxes, fontsize=7)
+    _save(fig, "fig_counterfactual_series")
+
+
+def zeeman() -> None:
+    """Hydrogen n = 2 across the Breit-Rabi crossover."""
+    fig, ax = plt.subplots(figsize=ONE_COL)
+    z = DATA["zeeman_h2"]
+    b = np.array(z["b_tesla"])
+    for key, values in z["levels_ghz"].items():
+        ls = "-" if key.startswith("l=1") else "--"
+        ax.plot(b, values, ls=ls, lw=0.9, color=TIER["approximation"][0])
+    ax.set(xlabel="$B$ (tesla)", ylabel="energy from $2p_{3/2}$ at $B=0$ (GHz)", xlim=(0, 2))
+    ax.plot([], [], ls="-", color=TIER["approximation"][0], label="$2p$ sublevels")
+    ax.plot([], [], ls="--", color=TIER["approximation"][0], label="$2s$ sublevels")
+    ax.legend(frameon=False)
+    _save(fig, "fig_zeeman")
+
+
+def curve_of_growth_fig() -> None:
+    """Lyman-alpha equivalent width against column, regimes marked."""
+    fig, ax = plt.subplots(figsize=ONE_COL)
+    c = DATA["curve_of_growth_lya"]
+    n, w = np.array(c["column_m2"]), np.array(c["equivalent_width_nm"])
+    for regime, marker in (("linear", "o"), ("saturated", "s"), ("damping", "^")):
+        mask = np.array([r == regime for r in c["regime"]])
+        ax.loglog(n[mask], w[mask], ls="none", marker=marker, ms=3, mfc="none",
+                  color=TIER["approximation"][0], label=regime)
+    ax.loglog(n, w, lw=0.6, color="0.5", zorder=0)
+    ax.set(xlabel="column density in the lower level (m$^{-2}$)",
+           ylabel="equivalent width (nm)")
+    ax.legend(frameon=False, title=r"Ly$\alpha$, $T=10^4$ K", title_fontsize=6)
+    _save(fig, "fig_curve_of_growth")
+
+
 def sci(x: float, sig: int = 2) -> str:
     """x in math-mode scientific notation at `sig` figures: 1.2\\times10^{-5}."""
     if x == 0:
@@ -247,6 +356,52 @@ def tables() -> None:
     m["ArMaxDiff"] = f"{np.abs(diff).max():.2f}"
     m["ArDensityElectrons"] = f"{DATA['density_pauli_ar']['real']['electrons']:.3f}"
 
+    # Numbers for the expanded text.
+    systems = {r["key"]: r for r in DATA["systems"]}
+    m["LyaH"] = f"{systems['h']['lyman_alpha_nm']:.4f}"
+    m["LyaPs"] = f"{systems['ps']['lyman_alpha_nm']:.2f}"
+    m["LyaMuH"] = f"{systems['mu-h']['lyman_alpha_nm']:.4f}"
+    m["LyaHeIon"] = f"{systems['he+']['lyman_alpha_nm']:.3f}"
+    m["MuMuH"] = f"{systems['mu-h']['mu_ratio']:.3f}"
+    relfrac = {r["z"]: r["relativity_fraction"] for r in DATA["error_budget"]}
+    for z, name in ((1, "One"), (2, "Two"), (18, "Eighteen"), (36, "ThirtySix")):
+        m["RelFrac" + name] = sci(relfrac[z])
+    hf = {r["symbol"]: r for r in DATA["hf_totals"]}
+    for s in ("He", "Ar"):
+        bar = hf[s]["error_bar_hartree"] / abs(hf[s]["energy_hartree"])
+        m["RelOverBar" + s] = f"{relfrac[hf[s]['z']] / bar:.0f}"
+    radial = DATA["radial_compare"]
+    m["RadialDiffMax"] = sci(max(r["max_abs_diff"] for r in radial))
+    m["RadialDiffMin"] = sci(min(r["max_abs_diff"] for r in radial))
+    m["FineItersMin"] = str(min(r["iterations"] for r in DATA["hf_totals"]))
+    m["FineItersMax"] = str(max(r["iterations"] for r in DATA["hf_totals"]))
+    m["CoarseItersMin"] = str(min(r["coarse_iterations"] for r in DATA["hf_totals"]))
+    m["CoarseItersMax"] = str(max(r["coarse_iterations"] for r in DATA["hf_totals"]))
+    m["FinalResidualMax"] = sci(max(r["residual_history"][-1] for r in DATA["hf_totals"]))
+    ex = {r["symbol"]: r for r in DATA["exchange_series"]}
+    m["ExchMg"] = f"{ex['Mg']['exchange_hartree']:.3f}"
+    m["ExchAr"] = f"{ex['Ar']['exchange_hartree']:.3f}"
+    ps = {r["z"]: r for r in DATA["pauli_series"]}
+    m["PauliRatioNe"] = f"{ps[10]['radius_ratio']:.3f}"
+    m["PauliRatioNa"] = f"{ps[11]['radius_ratio']:.3f}"
+    m["PauliRatioLi"] = f"{ps[3]['radius_ratio']:.3f}"
+    m["PauliRatioBe"] = f"{ps[4]['radius_ratio']:.3f}"
+    m["HeBound"] = f"{ps[2]['variational_energy']:.4f}"
+    m["HeCollapsed"] = f"{ps[2]['collapsed_energy']:.4f}"
+    m["NPauliAtoms"] = str(len(ps))
+    zee = DATA["zeeman_h2"]["levels_ghz"]
+    zero = [v[0] for v in zee.values()]
+    m["FineSplitGHz"] = f"{max(zero) - min(zero):.2f}"
+    cog = DATA["curve_of_growth_lya"]
+    m["LyaF"] = f"{cog['f']:.4f}"
+    m["LyaA"] = sci(cog["einstein_a"], 4)
+    m["LyaSigma"] = sci(cog["sigma_nm"])
+    m["LyaGamma"] = sci(cog["gamma_nm"])
+    m["LyaDampingA"] = sci(cog["gamma_nm"] / (cog["sigma_nm"] * np.sqrt(2)))
+    m["NAllowlist"] = str(len(DATA["allowlist"]))
+    m["NumpyVersion"], m["ScipyVersion"] = meta["numpy"], meta["scipy"]
+    m["PythonVersion"] = meta["python"]
+
     (out / "numbers.tex").write_text(
         "% Generated by scripts/paper_figures.py from paper/data/paper_data.json. Do not edit.\n"
         + "".join(rf"\newcommand{{\{k}}}{{{v}}}" + "\n" for k, v in m.items()),
@@ -276,11 +431,51 @@ def tables() -> None:
             rf"{rows[0]['reference_medium']} \\")
     nist_tab += [r"\hline\hline", r"\end{tabular}"]
     (out / "table_nist.tex").write_text("\n".join(nist_tab) + "\n", encoding="utf-8")
-    print(f"wrote {len(m)} macros and 2 tables")
+
+    def write(name: str, spec: str, header: str, rows: list[str]) -> None:
+        body = [rf"\begin{{tabular}}{{{spec}}}", r"\hline\hline", header + r" \\", r"\hline",
+                *[row + r" \\" for row in rows], r"\hline\hline", r"\end{tabular}"]
+        (out / f"{name}.tex").write_text("\n".join(body) + "\n", encoding="utf-8")
+
+    write("table_systems", "lrccc",
+          r"System & $Z$ & $\mu/m_e$ & $E_1$ (eV) & Ly$\alpha$ (nm)",
+          [rf"{r['name']} & {r['z']} & ${r['mu_ratio']:.8g}$ & ${r['ground_ev']:.4f}$ & "
+           rf"${r['lyman_alpha_nm']:.4f}$" for r in DATA["systems"]])
+    write("table_allowlist", "lp{0.55\\textwidth}",
+          r"Model.field & Why it carries no provenance",
+          [(rf"\texttt{{{r['model']}.{r['field']}}} & {r['reason']}").replace("_", r"\_")
+           for r in DATA["allowlist"]])
+    write("table_pauli", "rcccc",
+          r"$Z$ & $E$ (exclusion on) & $E_{1s^N}$ (off) & bound & $\langle r\rangle$ ratio",
+          [rf"{r['z']} & ${r['real_energy']:.3f}$ & ${r['collapsed_energy']:.3f}$ & "
+           rf"${r['variational_energy']:.3f}$ & {r['radius_ratio']:.3f}"
+           for r in DATA["pauli_series"]])
+    write("table_budget", "lcccc",
+          r"Atom & bar$/|E|$ & deviation$/|E|$ & relativity & relativity / bar",
+          [rf"{r['symbol']} & ${sci(r['error_bar_hartree'] / abs(r['energy_hartree']))}$ & "
+           rf"${sci(r['deviation_hartree'] / abs(r['energy_hartree']))}$ & "
+           rf"${sci(relfrac[r['z']])}$ & "
+           rf"{relfrac[r['z']] / (r['error_bar_hartree'] / abs(r['energy_hartree'])):.0f}"
+           for r in DATA["hf_totals"]])
+    write("table_exchange", "lrc", r"Atom & $Z$ & $E_\mathrm{HF}-E_\mathrm{Hartree}$ (hartree)",
+          [rf"{r['symbol']} & {r['z']} & ${r['exchange_hartree']:.4f}$"
+           for r in DATA["exchange_series"]])
+    write("table_nist_full", "llcccc",
+          r"System & Transition & Computed (nm) & NIST (nm) & Relative residual & Medium",
+          [rf"{names[r['system']]} & {r['transition']} & ${r['computed_nm']:.4f}$ & "
+           rf"${r['reference_nm']:.4f}$ & ${sci(r['relative_error'])}$ & {r['reference_medium']}"
+           for r in nist_rows])
+    print(f"wrote {len(m)} macros and 8 tables")
 
 
 def main() -> None:
     tables()
+    radial_compare()
+    error_budget()
+    scf_history()
+    counterfactual_series()
+    zeeman()
+    curve_of_growth_fig()
     architecture()
     convergence()
     nist()
