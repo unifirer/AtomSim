@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { parseAppUrl, serializeAppUrl } from "../lib/urlState";
 import { FLAGSHIP_TOUR_ID, TOURS, tourById } from "./registry";
+import { measurementsIn } from "./prose";
 import { stepState } from "./step";
 import { CLAIM_KINDS } from "./types";
 
+const UNIT_OF: Record<string, string> = {
+  energy_eV: "eV", ionization_eV: "eV", mean_r_pm: "pm", wavelength_nm: "nm",
+};
+
 describe("registry", () => {
+  it("backs every number-with-a-unit in tour prose with a checked claim", () => {
+    // The claims are checked against the engine in tests/test_tour_claims.py.
+    // This is the other half: a measurement written into the prose without a
+    // claim would be checked by nothing, so it fails here instead.
+    let seen = 0;
+    for (const tour of TOURS) {
+      for (const step of tour.steps) {
+        for (const m of step.body.flatMap(measurementsIn)) {
+          seen += 1;
+          const [num, unit] = m.split(/\s+/);
+          const backed = (step.claims ?? []).some(
+            (c) => UNIT_OF[c.of] === unit && Math.abs(c.is - Number(num)) <= c.tol,
+          );
+          expect(backed, `${tour.id}/${step.id}: "${m}" has no claim`).toBe(true);
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(0); // a lint that matched nothing would pass vacuously
+  });
+
   it("loads every tour with at least one step", () => {
     expect(TOURS.length).toBeGreaterThan(0);
     for (const t of TOURS) expect(t.steps.length).toBeGreaterThan(0);
