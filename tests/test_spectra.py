@@ -166,9 +166,40 @@ def test_screened_he_reference_registered_and_compares():
     assert ref is not None and ref.species == "He I"
     assert "NIST" in ref.citation
     res = solve_screened_atom(z=2, n_electrons=2, config=aufbau_configuration(2))
-    comps = compare_lines(screened_transition_lines(res), ref, tolerance_relative=0.05)
-    assert comps  # at least one NIST line matched a computed line
-    assert all(c.within_tolerance for c in comps)  # GSZ He within the disclosed 5%
+    comps = compare_lines(
+        screened_transition_lines(res), ref, tolerance_relative=0.05, window_relative=0.25
+    )
+    # Every vendored line is reported, the bad ones included. This test used to
+    # assert all of them sat inside 5 percent, and it passed only because each
+    # reference was paired with whichever computed line was nearest, often a
+    # different transition. Paired by transition, the triplet 2p->2s line is 36
+    # percent off: GSZ has no exchange, so it cannot split singlet from triplet,
+    # and its one 2p->2s line lands between 1083 nm (triplet) and 2058 nm.
+    assert len(comps) == len(ref.lines)
+    triplet = next(c for c in comps if c.reference_nm == pytest.approx(1083.034, abs=1e-3))
+    assert not triplet.within_tolerance
+    assert triplet.relative_error > 0.25  # the 25% window must not hide it
+
+
+def test_screened_comparison_pairs_by_transition_not_by_wavelength():
+    """A GSZ line can sit 5 percent off, farther than the gap to a neighbouring
+    line, so nearest-wavelength pairing compared sodium's 4d->3p reference
+    (568.8 nm) with the computed 3p->3s line and called it a match."""
+    from atomsim.atoms import aufbau_configuration
+    from atomsim.screened_atom import solve_screened_atom
+    from atomsim.spectra import screened_transition_lines
+
+    for key, z in (("he", 2), ("li", 3), ("na", 11)):
+        ref = load_reference(key)
+        res = solve_screened_atom(z=z, n_electrons=z, config=aufbau_configuration(z))
+        comps = compare_lines(
+            screened_transition_lines(res), ref, tolerance_relative=0.05, window_relative=0.25
+        )
+        labels = {r.wavelength_nm: r.label for r in ref.lines}
+        for c in comps:
+            ln = c.line
+            named = f"{ln.n_upper}{'spdf'[ln.l_upper]}->{ln.n_lower}{'spdf'[ln.l_lower]}"
+            assert labels[c.reference_nm].startswith(named), (key, c.reference_nm, named)
 
 
 def test_screened_na_has_line_near_589nm():

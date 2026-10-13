@@ -11,6 +11,7 @@ reference data and never queries anything live.
 
 import itertools
 import json
+import re
 from dataclasses import dataclass
 from importlib import resources
 
@@ -494,6 +495,9 @@ class LineComparison:
     delta_nm: float
     relative_error: float
     within_tolerance: bool
+    #: The residual's own provenance: the line's tier, plus how the pair was made
+    #: and the reference medium, which the line alone cannot say.
+    provenance: Provenance
 
 
 def load_reference(system_key: str) -> ReferenceData | None:
@@ -521,38 +525,61 @@ def load_reference(system_key: str) -> ReferenceData | None:
     )
 
 
+_NAMED_TRANSITION = re.compile(r"(\d+)([spdfghi])->(\d+)([spdfghi])")
+
+
+def _named_transition(label: str) -> tuple[int, int, int, int] | None:
+    """(n_u, l_u, n_l, l_l) from a label that starts "4d->3p", else None."""
+    m = _NAMED_TRANSITION.match(label)
+    if m is None:
+        return None
+    nu, lu, nl, ll = m.groups()
+    return int(nu), _L_LETTERS.index(lu), int(nl), _L_LETTERS.index(ll)
+
+
 def compare_lines(
     line_list: LineList,
     reference: ReferenceData,
     tolerance_relative: float | None = None,
     window_relative: float = 0.01,
 ) -> tuple[LineComparison, ...]:
-    """Match each reference line to the nearest computed line and report the
-    residuals.
+    """Pair each reference line with its computed line and report the residuals.
 
-    Two separate scales are kept. `window_relative` decides whether a reference
-    line's transition is present in the computed set at all, which is a coarse
-    association cut; `tolerance_relative` decides whether the matched pair
-    passes, which is the disclosed accuracy bar and feeds only the
-    within_tolerance flag. They differ for the approximate models: a GSZ valence
-    line may sit several percent off the real wavelength and still be the
-    correct transition, so it is kept and its residual reported, while a
-    reference line with no computed transition near it is dropped. The 0.01
-    default preserves the exact hydrogenic behavior.
+    A reference whose label names its transition ("4d->3p") is paired with that
+    transition and nothing else, however far off it lands. The screened
+    references all do. A GSZ line can sit 5 percent off, which is farther than
+    the gap to a neighbouring line, and nearest-wavelength pairing then compared
+    sodium's 4d->3p reference with the computed 3p->3s line, and passed helium's
+    triplet lines against whichever unrelated line happened to sit close. The
+    window does not apply to a named pair either: the transition is known to be
+    in the set, so a large residual is a result to show, not a reason to drop it.
+
+    A reference with no named transition falls back to the nearest computed
+    line. That is exact for the hydrogenic gross lines, whose l components all
+    share one wavelength. Two scales are kept there. `window_relative` decides
+    whether the reference line's transition is present in the computed set at
+    all, a coarse association cut; `tolerance_relative` decides whether the pair
+    passes, the disclosed accuracy bar, and feeds only the within_tolerance flag.
+    The 0.01 default preserves the exact hydrogenic behavior.
     """
     tol = tolerance_relative if tolerance_relative is not None else _DEFAULT_TOL[
         line_list.fine_structure
     ]
     out: list[LineComparison] = []
     for ref in reference.lines:
-        if not line_list.lines:
-            break
+        named = _named_transition(ref.label)
+        candidates = line_list.lines if named is None else [
+            ln for ln in line_list.lines
+            if (ln.n_upper, ln.l_upper, ln.n_lower, ln.l_lower) == named
+        ]
+        if not candidates:
+            continue  # that transition is not in the computed set
         nearest = min(
-            line_list.lines, key=lambda ln: abs(ln.wavelength.value - ref.wavelength_nm)
+            candidates, key=lambda ln: abs(ln.wavelength.value - ref.wavelength_nm)
         )
         delta = nearest.wavelength.value - ref.wavelength_nm
         rel = abs(delta) / ref.wavelength_nm
-        if rel > window_relative:
+        if named is None and rel > window_relative:
             continue  # no transition near this reference line, so it is not in the set
         out.append(
             LineComparison(
@@ -562,6 +589,36 @@ def compare_lines(
                 delta_nm=delta,
                 relative_error=rel,
                 within_tolerance=rel <= tol,
+                provenance=_comparison_provenance(nearest, reference, named is not None),
             )
         )
     return tuple(out)
+
+
+def _comparison_provenance(
+    line: "SpectralLine", reference: ReferenceData, named: bool
+) -> Provenance:
+    """A residual is as trustworthy as the computed line it differences, and it
+    also inherits two things the line alone does not say: how the pair was made,
+    and which medium the reference wavelength was measured in."""
+    medium = f"reference medium: {reference.medium}"
+    refinement = None
+    if reference.medium != "vacuum":
+        medium += (
+            "; the computed line is a vacuum wavelength and the air-vacuum"
+            " difference, about 3e-4 relative, is not corrected"
+        )
+        refinement = "convert the reference to a vacuum wavelength before differencing"
+    return Provenance(
+        fidelity=line.wavelength.provenance.fidelity,
+        method=(
+            f"computed wavelength minus the vendored {reference.species} wavelength, "
+            + ("paired by the transition the reference names" if named
+               else "paired with the nearest computed line")
+        ),
+        assumptions=(
+            f"reference: {reference.citation}, retrieved {reference.retrieved}",
+            medium,
+        ),
+        refinement=refinement,
+    )

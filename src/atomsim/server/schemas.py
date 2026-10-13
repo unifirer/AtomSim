@@ -696,6 +696,7 @@ class ComparisonModel(BaseModel):
     delta_nm: float
     relative_error: float
     within_tolerance: bool
+    provenance: ProvenanceModel
 
     @classmethod
     def from_comparison(cls, c: LineComparison) -> "ComparisonModel":
@@ -706,4 +707,5 @@ class ComparisonModel(BaseModel):
             delta_nm=c.delta_nm,
             relative_error=c.relative_error,
             within_tolerance=c.within_tolerance,
+            provenance=ProvenanceModel.from_provenance(c.provenance),
         )

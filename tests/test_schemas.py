@@ -1,4 +1,6 @@
+import inspect
 import json
+import typing
 
 import numpy as np
 import pytest
@@ -15,6 +17,72 @@ def _prov():
         error_estimate=1e-6,
         refinement="refine",
     )
+
+
+#: Floats allowed to reach the browser with no provenance on themselves or on any
+#: model enclosing them. None is a computed result: each is a label, an input
+#: echoed back, or a ratio whose sibling Quantity carries the provenance. The
+#: reason is the entry, so adding one means writing down why it is not physics.
+_NO_PROVENANCE_NEEDED = {
+    ("FineLevelModel", "j"): "quantum-number label",
+    ("LevelModel", "j"): "quantum-number label",
+    ("LineModel", "j_upper"): "quantum-number label",
+    ("LineModel", "j_lower"): "quantum-number label",
+    ("HyperfineLevelModel", "F"): "quantum-number label",
+    ("HyperfineShellModel", "I"): "nuclear spin label",
+    ("ZeemanSublevelModel", "m_j"): "quantum-number label",
+    ("ZeemanSublevelModel", "j_label"): "quantum-number label",
+    ("LevelsResponse", "alpha"): "the fine-structure constant the caller asked for",
+    ("LevelsResponse", "b_field"): "the field the caller asked for",
+    ("LevelsResponse", "e_field"): "the field the caller asked for",
+    ("ThermalModel", "temperature_k"): "the temperature the caller asked for",
+    ("ThermalModel", "electron_density_cm3"): "the density the caller asked for",
+    ("ForceLawModel", "params"): "the force-law parameters the caller asked for",
+    ("SpectrumResponse", "tolerance_relative"): "the disclosed pass bar, not a result",
+    ("JobModel", "progress"): "job progress, not physics",
+    ("SystemModel", "m_over_m_nucleus"): "CODATA input; the mu_ratio Quantity beside it "
+                                          "carries the provenance",
+    ("DerivedObservableModel", "ratio"): "ratio of the sibling quantity to its real value; "
+                                         "that Quantity carries the provenance",
+}
+
+
+def _models(annotation) -> list:
+    from pydantic import BaseModel
+
+    found = [m for arg in typing.get_args(annotation) for m in _models(arg)]
+    if inspect.isclass(annotation) and issubclass(annotation, BaseModel):
+        found.append(annotation)
+    return found
+
+
+def _uncovered(model, covered: bool, out: set, seen: set) -> None:
+    if (model, covered) in seen:
+        return
+    seen.add((model, covered))
+    covered = covered or bool({"provenance", "column_provenance"} & set(model.model_fields))
+    for name, f in model.model_fields.items():
+        if not covered and "float" in str(f.annotation):
+            out.add((model.__name__, name))
+        for sub in _models(f.annotation):
+            _uncovered(sub, covered, out, seen)
+
+
+def test_every_float_a_route_returns_is_covered_by_a_provenance():
+    """The prime directive at the HTTP boundary, checked rather than hoped for.
+
+    Every response model of every route is walked, and each float in it must sit
+    under a provenance, its own or an enclosing model's. The NIST comparison rows
+    failed this until they carried one, and with it the fact that the screened
+    references are air wavelengths compared against vacuum ones.
+    """
+    from atomsim.server.app import create_app
+
+    uncovered: set = set()
+    for route in create_app().routes:
+        for model in _models(getattr(route, "response_model", None)):
+            _uncovered(model, False, uncovered, set())
+    assert uncovered - set(_NO_PROVENANCE_NEEDED) == set()
 
 
 def test_provenance_round_trip():

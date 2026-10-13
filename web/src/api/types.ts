@@ -269,6 +269,8 @@ export interface ComparisonInfo {
   delta_nm: number;
   relative_error: number;
   within_tolerance: boolean;
+  /** How the pair was made and the reference medium, beside the line's tier. */
+  provenance: Provenance;
 }
 
 /** The width budget of one line, so the caption can say what set it. */

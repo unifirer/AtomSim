@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Quantity, SpectralLineInfo } from "../api/types";
-import { intensityScale, residualUnit, wavelengthWindow } from "./SpectrumView";
+import type { ComparisonInfo, Quantity, SpectralLineInfo } from "../api/types";
+import { airNote, intensityScale, residualUnit, wavelengthWindow } from "./SpectrumView";
 
 const q = (value: number, unit: string): Quantity =>
   ({ value, unit, label: "", provenance: {} }) as never;
@@ -150,5 +150,27 @@ describe("residualUnit", () => {
   it("switches to percent once the tolerance is coarse", () => {
     expect(residualUnit(0.02).label).toBe("percent");
     expect(residualUnit(0.02).scale).toBe(100);
+  });
+});
+
+describe("airNote", () => {
+  const row = (medium: string): ComparisonInfo => ({
+    wavelength_nm: 552.3, reference_nm: 589.0, reference_uncertainty_nm: null,
+    delta_nm: -36.7, relative_error: 0.062, within_tolerance: false,
+    provenance: {
+      fidelity: "approximation", method: "m", error_estimate: null, refinement: null,
+      assumptions: ["reference: NIST ASD", `reference medium: ${medium}`],
+    },
+  });
+
+  it("surfaces the air-vacuum disclosure", () => {
+    expect(airNote([row("air; the computed line is a vacuum wavelength")])).toBe(
+      "Reference medium: air; the computed line is a vacuum wavelength.",
+    );
+  });
+
+  it("says nothing for a vacuum reference or no comparison", () => {
+    expect(airNote([row("vacuum")])).toBeNull();
+    expect(airNote(null)).toBeNull();
   });
 });

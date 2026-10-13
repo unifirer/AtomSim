@@ -1,6 +1,11 @@
 import { scaleLinear, scaleLog } from "d3-scale";
 import { useEffect, useState } from "react";
-import type { LineWidthInfo, ProfileInfo, SpectralLineInfo } from "../api/types";
+import type {
+  ComparisonInfo,
+  LineWidthInfo,
+  ProfileInfo,
+  SpectralLineInfo,
+} from "../api/types";
 import { formatOffset, offsetAxis, offsetTicks, thinTicks } from "../lib/axis";
 import {
   describeDensity,
@@ -60,6 +65,16 @@ const PICK: Record<BarQuantity, (ln: SpectralLineInfo) => number | undefined> = 
  * top few lines invisible. The compression is logarithmic, and the caption and
  * badge both say so.
  */
+/** The reference-medium disclosure, when the NIST lines are not vacuum ones.
+ *  Every row carries the same reference, so any row that says air says it for
+ *  all of them. */
+export function airNote(comparison: ComparisonInfo[] | null): string | null {
+  const note = (comparison ?? [])
+    .flatMap((c) => c.provenance.assumptions)
+    .find((a) => a.startsWith("reference medium:") && !a.endsWith(": vacuum"));
+  return note ? "R" + note.slice(1) + "." : null;
+}
+
 export function intensityScale(
   lines: SpectralLineInfo[],
   quantity: BarQuantity = "rate",
@@ -801,6 +816,9 @@ export function SpectrumView() {
               ? `Reference: ${spectrum.reference_citation}`
               : "No vendored NIST reference exists for this system."}
           </p>
+          {airNote(spectrum.comparison) && (
+            <p className="caption">{airNote(spectrum.comparison)}</p>
+          )}
         </section>
       ) : (
         <p className="hint-block">
