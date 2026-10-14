@@ -121,6 +121,10 @@ describe("serializeAppUrl", () => {
       isoFraction: 0.5,
       tour: null,
       step: 0,
+      superposition: [
+        { n: 3, l: 2, m: -2, weight: 0.3, phasePi: 1.25 },
+        { n: 4, l: 0, m: 0, weight: 0.7, phasePi: 0 },
+      ],
     };
     const parsed = parseAppUrl(serializeAppUrl(state));
     expect({ ...URL_DEFAULTS, ...parsed }).toEqual(state);

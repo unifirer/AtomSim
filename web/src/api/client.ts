@@ -328,6 +328,18 @@ export function createPlaneJob(params: PlaneParams): Promise<JobInfo> {
   return postJson("/api/jobs/plane", { resolution: 512, ...params });
 }
 
+export interface SuperpositionParams {
+  /** `weight` is a relative population; `phase` is in radians. */
+  components: { n: number; l: number; m: number; weight: number; phase: number }[];
+  basis: Basis;
+  system: string;
+  resolution?: number;
+}
+
+export function createSuperpositionJob(params: SuperpositionParams): Promise<JobInfo> {
+  return postJson("/api/jobs/superposition", { resolution: 256, ...params });
+}
+
 export interface IsoParams extends Partial<ManyElectronParams> {
   n: number;
   l: number;

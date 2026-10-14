@@ -3582,3 +3582,54 @@ input[type="range"]:disabled {
 .legal-links a:hover {
   color: var(--accent);
 }
+
+/* ---- Time evolution builder ---- */
+
+.evolve-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed var(--edge-faint);
+}
+
+/* Population and phase side by side where there is room: four rows of two
+   stacked sliders pushed the picture they control off a laptop screen. */
+.evolve-row-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.35rem 1.2rem;
+}
+
+.evolve-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+/* Three pickers share one row, so the rail's 6.5rem select floor would wrap
+   them on every width. */
+.evolve-row-head label {
+  gap: 0.3rem;
+  justify-content: flex-start;
+}
+
+.evolve-row-head select {
+  min-width: 3.2rem;
+}
+
+.evolve-row-name {
+  min-width: 6.5rem;
+  color: var(--text);
+}
+
+.evolve-row-head .ghost {
+  margin-left: auto;
+}
+
+.evolve-clock {
+  font-variant-numeric: tabular-nums;
+}

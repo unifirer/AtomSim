@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import type { CSSProperties } from "react";
 import { Controls } from "./components/Controls";
+import { EvolveView } from "./components/EvolveView";
 import { ForceLawView } from "./components/ForceLawView";
 import { GalleryStrip } from "./components/GalleryStrip";
 import { InfoPanel } from "./components/InfoPanel";
@@ -42,6 +43,7 @@ function Stage() {
       {view === "radial" && <RadialView />}
       {view === "levels" && <LevelsView />}
       {view === "spectrum" && <SpectrumView />}
+      {view === "evolve" && <EvolveView />}
       {view === "whatif" && <WhatIfView />}
       {view === "forcelaw" && <ForceLawView />}
     </>

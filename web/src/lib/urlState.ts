@@ -12,6 +12,7 @@ import {
   validateExprClient,
   type ForcePreset,
 } from "./forceLaw";
+import { DEFAULT_SUP, parseSup, sameSup, serializeSup, type SupComponent } from "./evolve";
 import { N_MAX, clampState } from "./quantum";
 import { CONST_MAX, CONST_MIN, CONSTANT_KEYS, type ConstantKey } from "./whatif";
 
@@ -130,6 +131,12 @@ export interface UrlState {
    */
   tour: string | null;
   step: number;
+  /**
+   * The states mixed in the Time evolution view, with their populations and
+   * phases. Physics input for that view alone, so it is a setting rather than
+   * a place: changing a weight replaces the history entry.
+   */
+  superposition: SupComponent[];
 }
 
 export const URL_DEFAULTS: UrlState = {
@@ -174,12 +181,15 @@ export const URL_DEFAULTS: UrlState = {
   pauli: true,
   tour: null,
   step: 0,
+  superposition: DEFAULT_SUP,
 };
 
 // A config string reads as compact subshell tokens: "1s2 2s2 2p6 3p1"
 const CONFIG_RE = /^(\d[spdfgh]\d+)( \d[spdfgh]\d+)*$/;
 
-const VIEWS: ViewMode[] = ["cloud", "plane", "radial", "levels", "spectrum", "whatif", "forcelaw"];
+const VIEWS: ViewMode[] = [
+  "cloud", "plane", "radial", "levels", "spectrum", "evolve", "whatif", "forcelaw",
+];
 const COLORS: ColorMode[] = ["solid", "density", "phase"];
 const BASES: Basis[] = ["complex", "real"];
 /** Which many-electron model an atom's levels come from. See UrlState.model. */
@@ -269,6 +279,7 @@ export function currentUrlState(s: Omit<UrlState, "tour" | "step">): UrlState {
     model: s.model,
     exchange: s.exchange,
     pauli: s.pauli,
+    superposition: s.superposition,
     // Not read off the snapshot. The store holds them as tourId/stepIndex, and
     // the two callers want opposite things: the URL subscriber overrides both
     // with the live tour, while the tour's own entry snapshot wants the
@@ -435,6 +446,9 @@ export function parseAppUrl(search: string): Partial<UrlState> {
   const config = q.get("config");
   if (config !== null && CONFIG_RE.test(config)) out.config = config;
 
+  const sup = parseSup(q.getAll("sup"));
+  if (sup) out.superposition = sup;
+
   const tour = q.get("tour");
   if (tour) {
     out.tour = tour;
@@ -522,6 +536,9 @@ export function serializeAppUrl(state: UrlState): string {
   // through a parser that would infer the missing one anyway, but a link
   // someone reads or edits should say both things it means.
   if (!state.pauli) q.set("nopauli", "1");
+  if (!sameSup(state.superposition, URL_DEFAULTS.superposition)) {
+    for (const s of serializeSup(state.superposition)) q.append("sup", s);
+  }
   if (state.tour) {
     q.set("tour", state.tour);
     if (state.step !== URL_DEFAULTS.step) q.set("step", String(state.step));

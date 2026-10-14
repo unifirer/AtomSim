@@ -201,3 +201,21 @@ export const THUMBNAIL_LIBERTY: Provenance = {
   error_estimate: null,
   refinement: "the 2D cross-section view shows the same plane labelled and to scale",
 };
+
+/**
+ * The Time evolution view's clock. A hydrogen beat lasts femtoseconds, so the
+ * movie runs about 1e16 times slower than the atom. The phase sum itself is
+ * evaluated at the stated t every frame; only how fast t advances is chosen.
+ */
+export const EVOLVE_PLAYBACK_LIBERTY: Provenance = {
+  fidelity: "visual_liberty",
+  method: "the clock is slowed so the slowest beat lasts a few seconds on screen",
+  assumptions: [
+    "playback speed is presentation: at 1x the slowest beat takes 4 s of wall time",
+    "each frame is the exact |Psi|^2 at the t printed under the picture",
+    "the colour scale is fixed for all t at the largest value any frame can reach",
+    "density brightness is gamma-compressed: t = (rho/rho_max)^0.5",
+  ],
+  error_estimate: null,
+  refinement: "the printed t and the beat periods are exact; set the speed to taste",
+};

@@ -65,9 +65,10 @@ layout.
 
 ## URL
 
-`sup=n_l_m_weight_phase~n_l_m_weight_phase` with the phase in units of pi.
-Only characters URLSearchParams leaves alone, since a weight carries a `.` and
-m a `-`. Absent means the default 1s + 2p0, equal populations, zero phase.
+One repeated key per state, `sup=n_l_m_weight_phase`, with the phase in units
+of pi: `?view=evolve&sup=1_0_0_1_0&sup=2_1_0_1_0`. Underscores because
+URLSearchParams leaves them unescaped and a weight carries a `.` and m a `-`.
+Absent means the default 1s + 2p0, equal populations, zero phase.
 
 ## Not in this phase
 

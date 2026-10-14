@@ -65,6 +65,16 @@ export const VIEW_LEADS: Record<string, ViewLead> = {
       "Try a scenario below. The lesson is in what refuses to budge: only " +
       "dimensionless ratios and fixed-ruler scales are observable at all.",
   },
+  evolve: {
+    title: "A superposition in time",
+    lead:
+      "A single orbital never moves: its |ψ|² is frozen forever. Mix two states " +
+      "with different energies and the electron cloud starts to slosh, at the " +
+      "frequency of the light the atom would emit.",
+    notice:
+      "Start with 1s + 2p₀ and watch the density rock along z. Then try 2s + 2p₀: " +
+      "they share an energy, so nothing moves at all.",
+  },
   forcelaw: {
     title: "What if the force law were different?",
     lead:

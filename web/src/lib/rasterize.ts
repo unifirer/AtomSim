@@ -13,9 +13,11 @@ export function rasterize(
   values: Float32Array,
   resolution: number,
   quantity: "density" | "psi",
+  /** A fixed colour scale. Omitted, the frame's own maximum. */
+  scale?: number,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(resolution * resolution * 4);
-  const vmax = quantity === "density" ? maxOf(values) : maxAbs(values);
+  const vmax = scale ?? (quantity === "density" ? maxOf(values) : maxAbs(values));
   for (let row = 0; row < resolution; row++) {
     const src = resolution - 1 - row; // +z goes at canvas row 0, the top
     for (let col = 0; col < resolution; col++) {

@@ -35,6 +35,19 @@ export const PHYSICS_CONTENT: Record<
       },
     ],
   },
+  evolve: {
+    title: "A superposition in time",
+    blocks: [
+      {
+        tex: String.raw`\Psi(\mathbf r, t) = \sum_k c_k\,\psi_k(\mathbf r)\,e^{-iE_k t/\hbar},\qquad \sum_k |c_k|^2 = 1`,
+        note: "The exact solution of the time-dependent Schrödinger equation for an isolated atom. Each stationary state only turns its own phase; nothing else about it changes.",
+      },
+      {
+        tex: String.raw`|\Psi|^2 = \sum_k |c_k|^2 \psi_k^2 + \sum_{j<k} 2\,|c_j c_k|\,\psi_j \psi_k \cos(\omega_{jk} t - \Delta\phi_{jk}),\quad \hbar\omega_{jk} = E_k - E_j`,
+        note: "On y = 0 every ψ_k is real, so all of the motion is in the cross terms, each one beating at a Bohr frequency. States with the same n share an energy and never beat here; fine structure would split them, at about α² of the gross gaps.",
+      },
+    ],
+  },
   radial: {
     title: "Radial structure",
     blocks: [

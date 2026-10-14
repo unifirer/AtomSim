@@ -16,8 +16,10 @@ import type {
   ScreenedLevels,
   SpectrumResponse,
   StateResponse,
+  SuperpositionMeta,
   SystemInfo,
 } from "../api/types";
+import { DEFAULT_SUP, sameStates, type SupComponent } from "../lib/evolve";
 import {
   DEFAULT_EXPR,
   PRESET_PARAMS,
@@ -43,6 +45,7 @@ export type ViewMode =
   | "radial"
   | "levels"
   | "spectrum"
+  | "evolve"
   | "whatif"
   | "forcelaw";
 export type ColorMode = "solid" | "density" | "phase";
@@ -160,6 +163,12 @@ interface AppState {
   plane: { meta: PlaneMeta; values: Float32Array } | null;
   planeStatus: SampleStatus;
   planeProgress: number;
+  /** The states mixed in the Time evolution view; see UrlState.superposition. */
+  superposition: SupComponent[];
+  /** Its psi_k grids, one per component. The browser runs the clock over them. */
+  evolve: { meta: SuperpositionMeta; psi: Float32Array[] } | null;
+  evolveStatus: SampleStatus;
+  evolveProgress: number;
   surfaceMode: SurfaceMode;
   /** The fraction of the electron the surface should enclose. The level follows. */
   isoFraction: number;
@@ -330,6 +339,8 @@ interface AppState {
   loadStateInfo: () => Promise<void>;
   sample: () => Promise<void>;
   loadPlane: () => Promise<void>;
+  setSuperposition: (superposition: SupComponent[]) => void;
+  loadEvolve: () => Promise<void>;
   loadRadial: () => Promise<void>;
   loadLevels: () => Promise<void>;
   loadSpectrum: () => Promise<void>;
@@ -348,6 +359,11 @@ export const INVALIDATED = {
   plane: null,
   planeStatus: "idle" as SampleStatus,
   planeProgress: 0,
+  // The superposition's grids are drawn for one system and one basis, so they
+  // go too. The mix itself stays: it is the reader's question, not an answer.
+  evolve: null,
+  evolveStatus: "idle" as SampleStatus,
+  evolveProgress: 0,
   // A mesh is a contour of one particular |psi|^2, so it goes as stale as the
   // cloud does the moment the state changes. The requested fraction stays out
   // of here: that is a question the reader asked, and it survives to be asked
@@ -409,6 +425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   systems: [],
   fps: 0,
   planeQuantity: "density",
+  superposition: DEFAULT_SUP,
   surfaceMode: "cloud",
   isoFraction: 0.9,
   labConst: { hbar: 1, e: 1, m_e: 1, eps0: 1, c: 1 },
@@ -857,6 +874,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       set({
         planeStatus: "error",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+  // Only a change of states discards the grids. Populations and phases are
+  // applied in the browser (see evolve.ts `coefficients`), so dragging one
+  // redraws the movie rather than asking the server for the same psi_k again.
+  setSuperposition: (superposition) =>
+    set((s) =>
+      sameStates(s.superposition, superposition)
+        ? { superposition }
+        : { superposition, evolve: null, evolveStatus: "idle", evolveProgress: 0 },
+    ),
+  loadEvolve: async () => {
+    const { superposition, system, basis } = get();
+    set({ evolveStatus: "sampling", evolveProgress: 0, error: null });
+    try {
+      const job = await client.createSuperpositionJob({
+        components: superposition.map((c) => ({
+          n: c.n, l: c.l, m: c.m, weight: c.weight, phase: c.phasePi * Math.PI,
+        })),
+        system,
+        basis,
+      });
+      await client.watchJob(job.id, (evolveProgress) => set({ evolveProgress }));
+      const meta = await client.getJobMeta(job.id);
+      if (meta.kind !== "superposition") throw new Error("expected superposition-job meta");
+      const psi = await Promise.all(
+        meta.components.map((_, k) => client.getChannel(job.id, `psi${k}`)),
+      );
+      // A mix whose states changed while this was in flight has already
+      // cleared `evolve`; landing the old grids would draw the previous one.
+      if (!sameStates(get().superposition, superposition)) return;
+      set({ evolve: { meta, psi }, evolveStatus: "ready", evolveProgress: 1 });
+    } catch (err) {
+      set({
+        evolveStatus: "error",
         error: err instanceof Error ? err.message : String(err),
       });
     }

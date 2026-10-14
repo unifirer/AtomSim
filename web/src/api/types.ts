@@ -660,4 +660,36 @@ export interface HFLevels {
   channels: ChannelInfo[];
 }
 
-export type JobMeta = SampleMeta | PlaneMeta | IsoMeta | HFLevels;
+/** One state of a superposition, with its normalized c_k and exact E_k. */
+export interface SuperpositionComponentMeta {
+  n: number;
+  l: number;
+  m: number;
+  re: number;
+  im: number;
+  /** E_k in hartree, so the clock runs in atomic units of time. */
+  energy: Quantity;
+}
+
+/**
+ * The real psi_k of a superposition on the y = 0 plane; the browser runs the
+ * phase sum. `beat_periods` is empty exactly when the mix is stationary.
+ */
+export interface SuperpositionMeta {
+  kind: "superposition";
+  resolution: number;
+  dtype: string;
+  layout: string;
+  unit: string;
+  half_extent: number;
+  axis_unit: string;
+  basis: string;
+  system: string;
+  components: SuperpositionComponentMeta[];
+  /** hbar / E_h in fs. */
+  time_unit_fs: number;
+  beat_periods: Quantity[];
+  provenance: Provenance;
+}
+
+export type JobMeta = SampleMeta | PlaneMeta | IsoMeta | HFLevels | SuperpositionMeta;

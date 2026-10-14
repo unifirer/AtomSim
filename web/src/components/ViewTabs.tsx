@@ -3,7 +3,7 @@ import { useAppStore } from "../state/store";
 import { VIEW_OPTIONS } from "./Controls";
 
 /**
- * The seven views as a strip of tabs, for the shell that has no rails.
+ * The eight views as a strip of tabs, for the shell that has no rails.
  *
  * On a desktop the view list lives in the right-hand rail, always on screen,
  * under the argument that a closed dropdown would hide six of seven views
@@ -29,6 +29,7 @@ export const SHORT: Record<string, string> = {
   radial: "Radial",
   levels: "Levels",
   spectrum: "Spectrum",
+  evolve: "In time",
   whatif: "What-If: constants",
   forcelaw: "What-If: force law",
 };
