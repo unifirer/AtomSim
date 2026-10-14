@@ -38,6 +38,10 @@ B0_TESLA: float = _sc.physical_constants["atomic unit of mag. flux density"][0]
 # conversion at that same boundary.
 E0_V_PER_M: float = _sc.physical_constants["atomic unit of electric field"][0]
 
+# A real-universe display anchor ONLY (same caveat): femtoseconds per atomic
+# unit of time (hbar / E_h), for the time-evolution clock.
+AU_TIME_FS: float = _sc.physical_constants["atomic unit of time"][0] * 1e15
+
 
 @dataclass(frozen=True)
 class FundamentalConstants:

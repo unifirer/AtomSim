@@ -50,7 +50,7 @@ from atomsim.atoms import (
 )
 from atomsim.broadening import synthesize
 from atomsim.classical import classical_ghost
-from atomsim.constants import ALPHA, BOHR_RADIUS_PM, HARTREE_EV
+from atomsim.constants import ALPHA, AU_TIME_FS, BOHR_RADIUS_PM, HARTREE_EV
 from atomsim.constants_lab import analyze_constants
 from atomsim.density_compare import compare_total_densities
 from atomsim.hf_atom import (
@@ -122,6 +122,12 @@ from atomsim.spectra import (
     screened_transition_lines,
     subshell_label,
     transition_lines,
+)
+from atomsim.superposition import (
+    MAX_COMPONENTS,
+    Component,
+    SuperpositionGrid,
+    superposition_grid,
 )
 from atomsim.systems import (
     element_emitter_mass,
@@ -495,6 +501,55 @@ class PlaneMetaModel(BaseModel):
     system: str
     #: Which many-electron model drew this; see SampleMetaModel.model.
     model: str = "gsz"
+    provenance: ProvenanceModel
+
+
+class ComponentModel(BaseModel):
+    """One state in a superposition: a relative population and a phase in radians."""
+
+    n: int
+    l: int
+    m: int
+    weight: float = PydanticField(ge=0.0)
+    phase: float = 0.0
+
+
+class SuperpositionRequest(BaseModel):
+    components: list[ComponentModel] = PydanticField(
+        min_length=1, max_length=MAX_COMPONENTS
+    )
+    basis: Literal["complex", "real"] = "complex"
+    system: str = "h"
+    resolution: int = PydanticField(default=256, ge=32, le=512)
+
+
+class SuperpositionComponentMeta(BaseModel):
+    n: int
+    l: int
+    m: int
+    #: The normalized c_k, split for JSON. sum |c_k|^2 = 1.
+    re: float
+    im: float
+    energy: QuantityModel
+
+
+class SuperpositionMetaModel(BaseModel):
+    kind: Literal["superposition"] = "superposition"
+    resolution: int
+    dtype: str
+    layout: str
+    unit: str
+    half_extent: float
+    axis_unit: str
+    basis: str
+    system: str
+    components: list[SuperpositionComponentMeta]
+    #: hbar / E_h in fs, so the browser's clock (which runs in atomic units,
+    #: because E_k is in hartree) can be read out in femtoseconds.
+    time_unit_fs: float
+    #: The distinct nonzero beat periods 2 pi hbar / |E_j - E_k|, ascending
+    #: frequency. Empty means the mix is stationary.
+    beat_periods: list[QuantityModel]
     provenance: ProvenanceModel
 
 
@@ -1981,6 +2036,44 @@ def create_app() -> FastAPI:
 
         return _dispatch(job, work)
 
+    @app.post("/api/jobs/superposition", response_model=JobModel)
+    async def create_superposition_job(req: SuperpositionRequest) -> JobModel:
+        """Evaluate each psi_k of a superposition once; the browser runs the clock.
+
+        Hydrogen-like systems only. A screened or Hartree-Fock orbital is not an
+        eigenstate of the many-electron Hamiltonian, so a phase sum over them
+        would wear the EXACT badge without earning it.
+        """
+        if _is_screened(req.system):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "time evolution needs exact stationary states, which only the "
+                    "hydrogen-like systems have; a screened or Hartree-Fock orbital "
+                    "is not an eigenstate of the many-electron atom"
+                ),
+            )
+        for c in req.components:
+            _validate_state(c.n, c.l, c.m)
+        sys_ = _resolve_system(req.system)
+        comps = [Component(c.n, c.l, c.m, c.weight, c.phase) for c in req.components]
+        try:
+            # The cheap checks (duplicates, all-zero weights) fail here as a 422
+            # rather than later inside the worker as a failed job.
+            superposition_grid(comps, Z=sys_.Z, mu_ratio=sys_.mu_ratio.value, resolution=2)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        job = jobs.create()
+        app.state.job_systems[job.id] = req.system
+
+        def work(progress):
+            return superposition_grid(
+                comps, basis=req.basis, Z=sys_.Z, mu_ratio=sys_.mu_ratio.value,
+                resolution=req.resolution, progress=progress,
+            )
+
+        return _dispatch(job, work)
+
     @app.post("/api/jobs/isosurface", response_model=JobModel)
     async def create_iso_job(req: IsoRequest) -> JobModel:
         """Start an isosurface extraction.
@@ -2129,6 +2222,42 @@ def create_app() -> FastAPI:
             provenance=ProvenanceModel.from_provenance(pg.provenance),
         )
 
+    def _superposition_meta(
+        sg: SuperpositionGrid, system_key: str
+    ) -> SuperpositionMetaModel:
+        method = (
+            "2 pi hbar / |E_j - E_k| from the exact Bohr energies, converted to fs "
+            "via hbar / E_h"
+        )
+        periods = [
+            QuantityModel.from_quantity(Quantity(
+                value=2 * np.pi / w * AU_TIME_FS, unit="fs",
+                label=f"beat period at |dE| = {w * HARTREE_EV:.6g} eV",
+                provenance=dataclasses.replace(sg.provenance, method=method),
+            ))
+            for w in sg.beat_frequencies()
+        ]
+        return SuperpositionMetaModel(
+            resolution=sg.psi.shape[1],
+            dtype="float32",
+            layout=(
+                "one channel psi{k} per component, row-major float32; "
+                "row i = z=axis[i] ascending, col j = x=axis[j]"
+            ),
+            unit="bohr^-3/2", half_extent=float(sg.axis[-1]), axis_unit="bohr",
+            basis=sg.basis, system=system_key,
+            components=[
+                SuperpositionComponentMeta(
+                    n=c.n, l=c.l, m=c.m, re=float(a.real), im=float(a.imag),
+                    energy=QuantityModel.from_quantity(e),
+                )
+                for c, a, e in zip(sg.components, sg.coefficients, sg.energies)
+            ],
+            time_unit_fs=AU_TIME_FS,
+            beat_periods=periods,
+            provenance=ProvenanceModel.from_provenance(sg.provenance),
+        )
+
     def _iso_meta(
         surf: Isosurface, system_key: str, model_key: str
     ) -> IsoMetaModel:
@@ -2168,16 +2297,24 @@ def create_app() -> FastAPI:
 
     @app.get(
         "/api/jobs/{job_id}/meta",
-        response_model=SampleMetaModel | PlaneMetaModel | IsoMetaModel | HFResultModel,
+        response_model=(
+            SampleMetaModel | PlaneMetaModel | IsoMetaModel | HFResultModel
+            | SuperpositionMetaModel
+        ),
     )
     def job_meta(
         job_id: str,
-    ) -> SampleMetaModel | PlaneMetaModel | IsoMetaModel | HFResultModel:
+    ) -> (
+        SampleMetaModel | PlaneMetaModel | IsoMetaModel | HFResultModel
+        | SuperpositionMetaModel
+    ):
         res = _finished_result(jobs, job_id)
         system_key = app.state.job_systems.get(job_id, "h")
         model_key = app.state.job_models.get(job_id, "gsz")
         if isinstance(res, PlaneGrid):
             return _plane_meta(res, system_key, model_key)
+        if isinstance(res, SuperpositionGrid):
+            return _superposition_meta(res, system_key)
         if isinstance(res, Isosurface):
             return _iso_meta(res, system_key, model_key)
         if isinstance(res, HFJobResult):
@@ -2228,6 +2365,14 @@ def create_app() -> FastAPI:
                     status_code=422, detail="plane jobs have a single channel"
                 )
             payload = res.values.astype(np.float32)
+        elif isinstance(res, SuperpositionGrid):
+            names = [f"psi{k}" for k in range(res.psi.shape[0])]
+            if channel not in names:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"no channel {channel!r} on this job; it has {', '.join(names)}",
+                )
+            payload = res.psi[names.index(channel)].astype(np.float32)
         elif isinstance(res, Isosurface):
             payload = _iso_channel_payload(res, channel)
         elif isinstance(res, HFJobResult):
